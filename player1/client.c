@@ -5,12 +5,12 @@ client* accept_new_client( int listen_sock){
     new_client->id = 0;
     printf("Waiting for new player\n");
     int size = sizeof(new_client->sockAddresse);
-    if ( new_client->socket = accept(listen_sock, (struct sockaddr *)&new_client->sockAddresse, &size) == -1){
+    if ( (new_client->socket = accept(listen_sock, (struct sockaddr *)&new_client->sockAddresse, &size)) == -1){
         perror("accept");
         return NULL;
     }
     printf("New player connected with socket: %d\n", new_client->socket);
-    if (send(new_client->socket, "Welcome to the game\n", 22, 0) == -1){
+    if (send(new_client->socket, "Welcome to the game\n", strlen("Welcome to the game\n"), 0) == -1){
         perror("send");
         return NULL;
     }
@@ -113,6 +113,7 @@ int gameListener( int listen_sock){
                 return -1;
             }
         }
+        printf("Accept and sent\n");
     }
 }
 

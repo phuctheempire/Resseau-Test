@@ -10,7 +10,7 @@ client* accept_new_client( int listen_sock){
         return NULL;
     }
     printf("New player connected\n");
-    if (send(new_client->socket, "Welcome to the game\n", 22, 0) == -1){
+    if (send(new_client->socket, "Welcome to the game\n", strlen("Welcome to the game\n"), 0) == -1){
         perror("send");
         return NULL;
     }
@@ -113,6 +113,7 @@ int gameListener( int listen_sock){
                 return -1;
             }
         }
+        printf("Accept and sent\n");
     }
 }
 
