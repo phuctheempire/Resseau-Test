@@ -5,12 +5,15 @@ client* accept_new_client( int listen_sock){
     new_client->id = 0;
     printf("Waiting for new player\n");
     int size = sizeof(new_client->sockAddresse);
-    if ( new_client->socket = accept(listen_sock, (struct sockaddr *)&new_client->sockAddresse, &size) == -1){
+    if ( (new_client->socket = accept(listen_sock, (struct sockaddr *)&new_client->sockAddresse, &size)) <= 0){
         perror("accept");
         return NULL;
     }
-    printf("New player connected\n");
-    if (send(new_client->socket, "Welcome to the game\n", strlen("Welcome to the game\n"), 0) == -1){
+    printf("New player connected with socket %d \n", new_client->socket);
+    char buffer[buffer_size];
+    bzero(buffer, buffer_size);
+    strcpy(buffer, "Welcome to the game\n");
+    if (send(new_client->socket, buffer, buffer_size-1, 0) == -1){
         perror("send");
         return NULL;
     }
@@ -27,17 +30,20 @@ int connect_to_game(game_ip ip, int isNewPlayer){
 
     if ( newSocket == -1){
         perror("socket");
+        close(newSocket);
         return 1;
     }
+    printf("New socket: %d\n", newSocket);
     if (connect (newSocket, (struct sockaddr *)&sockAddresse, sizeof(sockAddresse) )== -1){
         perror("connect");
+        close(newSocket);
         return 1;
     }
-    char buffer[buffer_size] = {0};
+    printf("Connected to server\n");
+    char buffer[buffer_size];
     bzero(buffer, buffer_size);
 
     fd_set fd_set_connect;
-
     do{
         bzero(buffer, buffer_size);
         FD_ZERO(&fd_set_connect);
@@ -130,7 +136,7 @@ int main(){
     listen_addr.sin_port = htons(PORT);
     listen_addr.sin_addr.s_addr = INADDR_ANY;
 
-    int listen_sock = socket(AF_INET, SOCK_STREAM, 0);
+    int listen_sock = socket(AF_INET, SOCK_STREAM, 6);
     // if (listen_sock == -1){
     //     perror("socket");
     //     return 1;
@@ -138,10 +144,12 @@ int main(){
 
     if (bind( listen_sock, (struct sockaddr *)&listen_addr, sizeof(listen_addr)  ) == -1){
         perror("bind");
+        close(listen_sock);
         return 1;
     }
     if (listen(listen_sock, 5) == -1){
         perror("listen");
+        close(listen_sock);
         return 1;
     }
 
