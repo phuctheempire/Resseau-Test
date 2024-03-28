@@ -1,30 +1,43 @@
 #include "client.h"
 
+static int main_port;
+static char main_ip [1024];
+
 client* accept_new_client( int listen_sock){
     client *new_client = calloc(1, sizeof(client));
-    new_client->id = 0;
     printf("Waiting for new player\n");
-    int size = sizeof(new_client->sockAddresse);
-    if ( (new_client->socket = accept(listen_sock, (struct sockaddr *)&new_client->sockAddresse, &size)) <= 0){
+    int size = sizeof(new_client->sockaddr_client);
+    if ( (new_client->socket_listen = accept(listen_sock, (struct sockaddr *)&new_client->sockaddr_client, &size)) <= 0){
         perror("accept");
         return NULL;
     }
-    printf("New player connected with socket %d \n", new_client->socket);
+    printf("New player connected with socket %d \n", new_client->socket_listen);
     char buffer[buffer_size];
     bzero(buffer, buffer_size);
     strcpy(buffer, "Welcome to the game\n");
-    if (send(new_client->socket, buffer, buffer_size, 0) == -1){
+    if (send_nodata_msg( MSG_CONNECT_START, new_client -> socket_listen) == -1){
         perror("send");
         return NULL;
     }
+    printf("Sent welcome message\n");
+    printf("Accepted client\n");
+    printf("Connecting back to client\n"); 
+    // connect_to_game();
     return new_client;
 }
 
-int connect_to_game(game_ip ip, int isNewPlayer){
+int connect_to_game( int isNewPlayer){
     struct sockaddr_in sockAddresse ={0};
+    char ip[1024];
+    int port;
+    printf("Enter Ip of server: ");
+    scanf("%s", ip);
+    printf("Enter port of server: ");
+    scanf("%d", &port);
+    game_ip connect_ip = inet_addr(ip);
     sockAddresse.sin_family = AF_INET;
-    sockAddresse.sin_port = htons(PORT);
-    sockAddresse.sin_addr.s_addr = ip;
+    sockAddresse.sin_port = htons(port);
+    sockAddresse.sin_addr.s_addr = connect_ip;
 
     int newSocket = socket(AF_INET, SOCK_STREAM, 6);
 
@@ -40,14 +53,17 @@ int connect_to_game(game_ip ip, int isNewPlayer){
         return 1;
     }
     printf("Connected to server\n");
-    char buffer[buffer_size];
-    printf("Charred");
-    bzero(buffer, buffer_size);
+    game_packet *connect_packet = create_game_packet();
+    if (connect_packet == NULL){
+        return -1;
+    }
+    connect_packet->data = NULL;
 
+    // char buffer[buffer_size];
+    // bzero(buffer, buffer_size);
     fd_set fd_set_connect;
-    printf("Before do");
     do{
-        bzero(buffer, buffer_size);
+        // bzero(buffer, buffer_size);
         FD_ZERO(&fd_set_connect);
         FD_SET(newSocket, &fd_set_connect);
 
@@ -56,26 +72,42 @@ int connect_to_game(game_ip ip, int isNewPlayer){
             return 1;
         }
         if (!FD_ISSET(newSocket, &fd_set_connect)){
-            if (isNewPlayer){
-                printf("Can't connect\n");
-            } else {
+            // if (isNewPlayer){
+            //     printf("Can't connect\n");
+            // } else {
                 printf("Can't connect to server\n");
-            }
+            // }
             close(newSocket);
             return 1;
         }
-        int read_size = recv(newSocket, buffer, buffer_size-1, MSG_WAITALL);
-            if (read_size == -1){
-                perror("recv");
-                return 1;
+        // int read_size = recv(newSocket, buffer, buffer_size, MSG_WAITALL);
+        //     if (read_size == -1){
+        //         perror("recv");
+        //         return 1;
+        //     }
+        //     if (read_size == 0){
+        //         printf("Server disconnected\n");
+        //         return 1;
+        //     }
+
+        if (receive_packet(newSocket, connect_packet) == 0){
+            return 1;
+        }
+        if (connect_packet->type == MSG_CONNECT_START){
+            if(isNewPlayer){
+                printf("Send new connection request\n");
+                init_game_packet(connect_packet, MSG_CONNECT_NEW, 0);
+            } else {
+                init_game_packet(connect_packet, MSG_CONNECT_REQ, 0);
             }
-            if (read_size == 0){
-                printf("Server disconnected\n");
-                return 1;
+            if (send_game_packet(connect_packet, newSocket) == -1){
+                printf("Send connect request failed\n");
+                return -1;
             }
-        printf("All player: %s\n", buffer);
-        break;
-    } while (1);
+            connect_packet->type = MSG_BAD_PORT;
+        }
+        print_game_packet(connect_packet);
+    } while (connect_packet->type == MSG_BAD_PORT);
 }
 
 int send_packet( int socket, struct packet *packet){
@@ -128,14 +160,21 @@ int gameListener( int listen_sock){
 
 int main(){
     typedef uint32_t game_ip;
-    game_ip ip = inet_addr(IP);
-    printf("Connecting to server %s\n", IP);
-    // connect_to_game(ip, 1);
+    printf("Enter IP: ");
+    scanf("%s", main_ip);
+    // printf("Enter port: ");
+    // scanf("%d", &main_port);
+
+    main_port = port_generator();
+    printf("Port: %d\n", main_port);
+    printf("Connecting to server\n");
+    int isnewplayer = 1;
+    connect_to_game(isnewplayer);
 
 
     struct sockaddr_in listen_addr = {0};
     listen_addr.sin_family = AF_INET;
-    listen_addr.sin_port = htons(PORT);
+    listen_addr.sin_port = htons(main_port);
     listen_addr.sin_addr.s_addr = INADDR_ANY;
 
     int listen_sock = socket(AF_INET, SOCK_STREAM, 6);
@@ -155,7 +194,7 @@ int main(){
         return 1;
     }
 
-    printf("Listening on port %d\n", PORT);
+    printf("Listening on port %d\n", main_port);
 
     gameListener(listen_sock);
 }

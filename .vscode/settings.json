@@ -1,6 +1,13 @@
 {
     "files.associations": {
         "*.embeddedhtml": "html",
-        "inet.h": "c"
+        "inet.h": "c",
+        "select.h": "c",
+        "in.h": "c",
+        "game_packet.h": "c",
+        "client_list.h": "c",
+        "socket.h": "c",
+        "client.h": "c",
+        "string.h": "c"
     }
 }
