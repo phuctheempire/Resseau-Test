@@ -17,6 +17,40 @@ int main(){
     return init_connection(ip_server, port);
 }
 
+char* extractIpAddress(){
+    struct ifaddrs *ifaddr, *ifa;
+    int family, s;
+    char host[1025];
+    char *loopbackIP = NULL;
+
+    if (getifaddrs(&ifaddr) == -1) {
+        perror("getifaddrs");
+        return NULL;
+    }
+
+    // Walk through linked list, maintaining head pointer so we can free list later
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL) {
+            continue;
+        }
+
+        family = ifa->ifa_addr->sa_family;
+
+        if (family == AF_INET && strcmp(ifa->ifa_name, "lo") == 0) {
+            s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in), host, 1025, NULL, 0, 1);
+            if (s != 0) {
+                printf("getnameinfo() failed: %s\n", gai_strerror(s));
+                return NULL;
+            }
+            loopbackIP = strdup(host); // strdup allocates memory and copies the string
+            break; // We've found the loopback interface, no need to continue
+        }
+    }
+
+    freeifaddrs(ifaddr);
+    return loopbackIP;
+}
+
 int init_connection(const char* ip_server, int port){
     if (updated_player == 0){
         struct sockaddr_in server_addr;
@@ -119,10 +153,12 @@ int create_listen_socket(){
         return -1;
     }
     // Local test 
-    char addresse_ip[CHAR_SIZE];
-    printf("Enter the listen IP: ");
-    scanf("%s", addresse_ip);
+    // char addresse_ip[CHAR_SIZE];
+    // printf("Enter the listen IP: ");
+    // scanf("%s", addresse_ip);
     //
+    char* addresse_ip = extractIpAddress();
+    printf("IP: %s\n", addresse_ip);
 
     struct sockaddr_in listen_addr = {0};
     listen_addr.sin_family = AF_INET;

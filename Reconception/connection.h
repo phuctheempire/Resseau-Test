@@ -10,7 +10,9 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-
+#include <ifaddrs.h>
+#include <netinet/in.h>
+#include <netdb.h>
 
 #include "game_packet.h"
 #include "client_list.h"
@@ -23,7 +25,7 @@ typedef uint32_t game_ip;
 
 static uint16_t main_port = -1;
 
-
+extern char* extractIpAddress();
 extern int connect_to_server(const char* ip_server, int  port_server,int new_player);
 extern int init_connection(const char* ip_server, int port);
 extern int create_listen_socket();

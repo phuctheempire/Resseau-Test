@@ -9,6 +9,8 @@
         "socket.h": "c",
         "stdlib.h": "c",
         "unistd.h": "c",
-        "string.h": "c"
+        "string.h": "c",
+        "in.h": "c",
+        "ifaddrs.h": "c"
     }
 }
