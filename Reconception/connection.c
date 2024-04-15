@@ -1,0 +1,279 @@
+#include "connection.h"
+
+static int updated_player = 0;
+
+int main(){
+    char ip_server[CHAR_SIZE];
+    int port;
+    int first_player;
+    printf("Is the first player? (0/1): ");
+    scanf("%d", &updated_player);
+    if(updated_player == 0){
+        printf("Enter the server IP: ");
+        scanf("%s", ip_server);
+        printf("Enter the server port: ");
+        scanf("%d", &port);
+    }
+    return init_connection(ip_server, port);
+}
+
+int init_connection(const char* ip_server, int port){
+    if (updated_player == 0){
+        struct sockaddr_in server_addr;
+        if ( inet_aton(ip_server, &server_addr.sin_addr) == 0){
+            printf("Invalid IP address\n");
+            return -1;
+        }
+        connect_to_server(ip_server, port, 1);
+    } else {
+        main_port = port_generator();
+    }
+    if (main_port == -1){
+        return -1;
+    }
+    int listen_socket = create_listen_socket();
+    printf("Server created on port %d\n", main_port);
+    game_listen(listen_socket);
+
+    if ( close(listen_socket) == -1){
+        perror("close");
+        return -1;
+    }
+}
+
+int connect_to_server(const char* ip_server, int port_server,int new_player){
+    struct sockaddr_in sock_adresse = {0};
+    sock_adresse.sin_port = htons(port_server);
+    sock_adresse.sin_addr.s_addr = inet_addr(ip_server);
+    sock_adresse.sin_family = AF_INET;
+
+    int socket_server = socket(AF_INET, SOCK_STREAM, 6);
+    if ( socket_server == -1){
+        perror("socket");
+        return -1;
+    }
+
+    if ( connect(socket_server, (struct sockaddr*)&sock_adresse, sizeof(sock_adresse)) == -1){
+        perror("connect");
+        close(socket_server);
+        return -1;
+    }
+
+    game_packet* packet = create_game_packet();
+
+    fd_set fd_connect;
+
+    do {
+        FD_ZERO(&fd_connect);
+        FD_SET(socket_server, &fd_connect);
+        select(socket_server + 1, &fd_connect, NULL, NULL, NULL);
+        if ( !FD_ISSET(socket_server, &fd_connect)){
+            printf("Error with address %s", inet_ntoa(sock_adresse.sin_addr));
+            close(socket_server);
+            return -1;
+        }
+        if ( receive_packet(packet, socket_server) == 0){
+            printf("Server disconnected\n");
+            close(socket_server);
+            return 1;
+        }
+        print_game_packet(packet);
+        if ( packet-> type == MSG_CONNECT_START){
+            if ( new_player){
+                main_port = port_generator();
+                printf("Port generated: %d\n", main_port);
+                init_game_packet(packet, MSG_CONNECT_NEW, 0);
+                if ( send_game_packet(packet, socket_server) == -1){
+                    printf("Error sending packet\n");
+                    close(socket_server);
+                    return -1;
+                }
+            } else {
+                init_game_packet(packet, MSG_CONNECT_REQ, 0);
+                if ( send_game_packet(packet, socket_server) == -1){
+                    printf("Error sending packet\n");
+                    close(socket_server);
+                    return -1;
+                }
+            }
+            packet-> type = MSG_BAD_PORT;
+        }
+    }
+    while ( packet->type != MSG_CONNECT_OK);
+    add_client(socket_server, port_server, sock_adresse);
+    if (updated_player == 0){
+            if ( send_nodata_msg(MSG_REQ_IP_PORT, socket_server) == -1){
+                return -1;
+            }
+            printf("Requesting IP and port\n");
+        }
+    return 0;
+}
+
+
+
+int create_listen_socket(){
+    int listen_socket = socket(AF_INET, SOCK_STREAM, 6);
+    if (listen_socket == -1){
+        perror("socket");
+        return -1;
+    }
+    // Local test 
+    char addresse_ip[CHAR_SIZE];
+    printf("Enter the listen IP: ");
+    scanf("%s", addresse_ip);
+    //
+
+    struct sockaddr_in listen_addr = {0};
+    listen_addr.sin_family = AF_INET;
+    listen_addr.sin_port = htons(main_port);
+    // Local test: 
+    listen_addr.sin_addr.s_addr = inet_addr(addresse_ip);
+    // listen_addr.sin_addr.s_addr = INADDR_ANY;
+    if (bind(listen_socket, (struct sockaddr*)&listen_addr, sizeof(listen_addr)) == -1){
+        perror("bind");
+        close(listen_socket);
+        return -1;
+    }
+    if (listen(listen_socket, 5) == -1){
+        perror("listen");
+        close(listen_socket);
+        return -1;
+    }
+    return listen_socket;
+
+}
+
+int game_listen( int listen_socket){
+    fd_set fd_listen;
+    int nb_fd;
+    int max_fd = 0;
+    while(1){
+        FD_ZERO(&fd_listen);
+        FD_SET(listen_socket, &fd_listen);
+        set_max_fd_all_client(&fd_listen, &max_fd);
+        if (max_fd < listen_socket){
+            max_fd = listen_socket;
+        }
+
+        nb_fd = select(max_fd + 1, &fd_listen, NULL, NULL, NULL);
+        if (nb_fd == -1){
+            perror("select");
+            return -1;
+        }
+
+        if ( FD_ISSET(listen_socket, &fd_listen)){
+            if (accept_new_client(listen_socket) == NULL){
+                return -1;
+            }
+        }
+        printf("Updated player: %d\n", updated_player);
+
+        listen_all_client(&fd_listen);
+    }
+}
+
+int listen_all_client(fd_set *fd_listen){
+    printf("Listening to all clients\n");
+    client* current_client = first_client();
+    game_packet* packet = create_game_packet();
+    while(current_client != NULL){
+
+        if ( FD_ISSET( current_client-> socket_client, fd_listen)){
+            printf("Receiving packet from client with port %d\n", current_client->port);
+            if ( receive_packet(packet, current_client->socket_client) == 0){
+                printf("Client with port %d disconnected\n", current_client->port);
+                remove_client(current_client);
+                current_client = current_client->next;
+                continue;
+            }
+            print_game_packet(packet);
+            if ( message_type_handler(packet, current_client) == -1){
+                return -1;
+            }
+            
+        }
+        current_client = current_client->next;
+    }
+
+}
+
+int message_type_handler(game_packet* packet, client* current_client){
+    switch (packet->type){
+        case MSG_CONNECT_NEW:
+            return new_connection(current_client, packet);
+        case MSG_CONNECT_REQ:
+            return req_connection(current_client, packet);
+        case MSG_REQ_IP_PORT:
+            return send_all_ip_port(current_client);
+        case MSG_REP_IP_PORT:
+            return affiche_all_ip_port(packet);
+    }
+}
+
+int affiche_all_ip_port(game_packet* packet){
+    uint32_t * ip_port = (uint32_t*) packet->data;
+    for (int i = 0; i < (packet->size)/sizeof(uint32_t)/2; i++){
+        printf("Port: %d, IP: %d\n", ip_port[2*i], ip_port[2*i + 1]);
+    }
+}
+
+int send_all_ip_port(client* current_client){
+    client* current = first_client();
+    game_packet* packet = create_game_packet();
+    init_game_packet(packet, MSG_REP_IP_PORT, 0);
+    packet -> size = (get_number_of_client() - 1)*sizeof(uint32_t)*2;
+    packet -> data = calloc(packet->size, 1);
+    uint32_t* ip_port = get_all_ip_port(current_client);
+    memcpy(packet->data,(char*) ip_port, packet->size);
+    if ( send_game_packet(packet, current_client->socket_client) == -1){
+        return -1;
+    }
+    return 0;
+}
+
+int new_connection( client* current_client, game_packet* packet ){
+    if ( port_exist(first_client(), packet->port)){
+        if(send_nodata_msg(MSG_BAD_PORT, current_client->socket_client) < 0){
+            return -1;
+        }
+        return 0;
+    }
+    return req_connection(current_client, packet);
+}
+
+int req_connection( client* current_client, game_packet* packet){
+    current_client->port = packet->port;
+    affiche_client(first_client());
+    if ( send_nodata_msg(MSG_CONNECT_OK, current_client->socket_client) < 0){
+        return -1;
+    }
+    return 0;
+}
+
+client* accept_new_client(int listen_socket){
+    int socket_new_client;
+    int len = sizeof(struct sockaddr_in);
+    struct sockaddr_in sockaddr_client;
+    if ( (socket_new_client = accept(listen_socket,(struct sockaddr*) &sockaddr_client, &len)) == -1){
+        perror("accept");
+        return NULL;
+    }
+    client* new_client = add_client(socket_new_client, 0, sockaddr_client);
+    if ( new_client == NULL){
+        return NULL;
+    }
+    int byte = send_nodata_msg(MSG_CONNECT_START, socket_new_client);
+    if ( byte == -1){
+        return NULL;
+    }
+    printf("Connecting to client with port %d\n", new_client->port);
+    return new_client;
+
+
+
+}
+
+// int new_connection( client* current_client, game_packet* packet ){
+    
+// }

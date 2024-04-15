@@ -1,4 +1,5 @@
 #include "game_packet.h"
+#include "connection.h"
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -6,15 +7,15 @@
 #include <errno.h>
 
 
-static int player_port = 0;
+
 static char* buffer; 
 static unsigned int buffer_size = 0;
 static const uint32_t header_size = sizeof(game_packet) - sizeof(char*);
 
 int port_generator(){
     srand(time(NULL));
-    player_port = rand() % 1000 + 8000;
-    return player_port;
+    main_port = rand() % 1000 + 8000;
+    return main_port;
 }
 static void resize_buffer( int size ){
     if(buffer_size){
@@ -24,12 +25,16 @@ static void resize_buffer( int size ){
     buffer_size = size;
 }
 
-void print_game_packet( const game_packet* packet){
-    printf("Packet type: %d\n", packet->type);
+int print_game_packet( const game_packet* packet){
+    printf("---------------Packet-----------------\n");
+    printf("Packet type: %d\n", packet->type);\
+    printf("Packet port: %d\n",(int) packet->port);
     printf("Packet size: %d\n", packet->size);
     if (packet->size > 0 && has_data(packet)){
         printf("Packet data: %s\n", packet->data);
     }
+    printf("-------------------------------------\n");
+    return 0;
 }
 
 game_packet *create_game_packet(){
@@ -37,9 +42,11 @@ game_packet *create_game_packet(){
     if (new_packet == NULL){
         return NULL;
     }
+    new_packet->data = NULL;
     return new_packet;
 }
 void init_game_packet( game_packet* packet, uint8_t type, uint32_t size ){
+    packet->port = main_port;
     packet->type = type;
     packet->size = size;
     packet->data = calloc(size, 1);
@@ -68,13 +75,14 @@ int is_valid_packet( const game_packet* packet){
 int send_nodata_msg( const uint8_t type, int socket){
     game_packet* message = create_game_packet();
     init_game_packet(message, type, 0);
+    // print_game_packet(message);
     int send_size = send(socket, message, header_size, 0);
     if (send_size == -1){
         perror("send");
         return -1;
     }
     free(message);
-    return 0;
+    return send_size;
 }
 
 int send_game_packet( game_packet* packet, int socket){
@@ -96,11 +104,14 @@ int send_game_packet( game_packet* packet, int socket){
             return -1;
         }
     }
-    return (int) send(socket, buffer, send_size, 0);
+    int a = (int) send(socket, buffer, send_size, 0);
+    printf("Sent %d bytes\n", a);
+    return a;
 
 }
 
-int recieve_packet( game_packet *recieve_packet, int socket ){
+int receive_packet( game_packet *recieve_packet, int socket ){
+    // printf("Receiving packet\n");
     int received_size = recv(socket, recieve_packet, header_size, 0);
     if (received_size == -1){
         perror("recv");
@@ -114,9 +125,11 @@ int recieve_packet( game_packet *recieve_packet, int socket ){
     }
     if (recieve_packet -> size > 0 && has_data(recieve_packet)){
         recieve_packet -> data = calloc(recieve_packet -> size, 1);
-        received_size = recv(socket, recieve_packet -> data, recieve_packet -> size, MSG_WAITALL);
+        received_size += recv(socket, recieve_packet -> data, recieve_packet -> size, MSG_WAITALL);
     }
+    printf("Received %d bytes\n", received_size);
     flush_socket(socket);
+    return received_size;
 
 
 }

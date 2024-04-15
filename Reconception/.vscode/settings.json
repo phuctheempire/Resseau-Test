@@ -1,0 +1,14 @@
+{
+    "files.associations": {
+        "*.embeddedhtml": "html",
+        "game_packet.h": "c",
+        "connection.h": "c",
+        "client_list.h": "c",
+        "message_type.h": "c",
+        "select.h": "c",
+        "socket.h": "c",
+        "stdlib.h": "c",
+        "unistd.h": "c",
+        "string.h": "c"
+    }
+}
