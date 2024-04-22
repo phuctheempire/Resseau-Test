@@ -36,7 +36,7 @@ char* extractIpAddress(){
 
         family = ifa->ifa_addr->sa_family;
 
-        if (family == AF_INET && strcmp(ifa->ifa_name, "lo") == 0) {
+        if (family == AF_INET && strcmp(ifa->ifa_name, "wlp4s0") == 0) {
             s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in), host, 1025, NULL, 0, 1);
             if (s != 0) {
                 printf("getnameinfo() failed: %s\n", gai_strerror(s));
@@ -81,7 +81,7 @@ int connect_to_server(const char* ip_server, int port_server,int new_player){
     sock_adresse.sin_addr.s_addr = inet_addr(ip_server);
     sock_adresse.sin_family = AF_INET;
 
-    int socket_server = socket(AF_INET, SOCK_STREAM, 6);
+    int socket_server = socket(AF_INET, SOCK_STREAM, 0);
     if ( socket_server == -1){
         perror("socket");
         return -1;
@@ -135,7 +135,7 @@ int connect_to_server(const char* ip_server, int port_server,int new_player){
     }
     while ( packet->type != MSG_CONNECT_OK);
     add_client(socket_server, port_server, sock_adresse);
-    if (updated_player == 0){
+    if (new_player){
             if ( send_nodata_msg(MSG_REQ_IP_PORT, socket_server) == -1){
                 return -1;
             }
@@ -165,6 +165,7 @@ int create_listen_socket(){
     listen_addr.sin_port = htons(main_port);
     // Local test: 
     listen_addr.sin_addr.s_addr = inet_addr(addresse_ip);
+    // printf("IP: %d\n", listen_addr.sin_addr.s_addr);
     // listen_addr.sin_addr.s_addr = INADDR_ANY;
     if (bind(listen_socket, (struct sockaddr*)&listen_addr, sizeof(listen_addr)) == -1){
         perror("bind");
@@ -250,8 +251,13 @@ int message_type_handler(game_packet* packet, client* current_client){
 int affiche_all_ip_port(game_packet* packet){
     uint32_t * ip_port = (uint32_t*) packet->data;
     for (int i = 0; i < (packet->size)/sizeof(uint32_t)/2; i++){
-        printf("Port: %d, IP: %d\n", ip_port[2*i], ip_port[2*i + 1]);
+        in_addr_t ip_addr = ip_port[2*i + 1];
+        struct in_addr addr;
+        addr.s_addr = ip_addr;
+        printf("Port: %d, IP: %s\n", ip_port[2*i], inet_ntoa(addr));
+        connect_to_server(inet_ntoa(addr), ip_port[2*i], 0);
     }
+    updated_player = 1;
 }
 
 int send_all_ip_port(client* current_client){
@@ -303,7 +309,7 @@ client* accept_new_client(int listen_socket){
     if ( byte == -1){
         return NULL;
     }
-    printf("Connecting to client with port %d\n", new_client->port);
+    printf("Connecting to client with port %d and ip address: %s\n", new_client->port, inet_ntoa(sockaddr_client.sin_addr));
     return new_client;
 
 
